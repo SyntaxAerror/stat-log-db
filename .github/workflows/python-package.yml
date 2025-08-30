@@ -5,9 +5,9 @@ name: Python package
 
 on:
   push:
-    branches: [ "main", "gh-pytest" ]
+    branches: [ "main" ]
   pull_request:
-    branches: [ "main", "gh-pytest" ]
+    branches: [ "main" ]
 
 jobs:
   build:
