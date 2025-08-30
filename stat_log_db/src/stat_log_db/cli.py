@@ -1,44 +1,17 @@
 import os
 import sys
-import argparse
 
-from .exceptions import raise_type_error_with_signature
-
-
-def create_parser(parser_args: dict, version: str | int = "0.0.1") -> argparse.ArgumentParser:
-    """Create the main argument parser."""
-    # Validate parser_args
-    if not isinstance(parser_args, dict):
-        raise_type_error_with_signature()
-    # Default formatter class
-    if "formatter_class" not in parser_args:
-        parser_args["formatter_class"] = argparse.RawDescriptionHelpFormatter
-    try:
-        parser = argparse.ArgumentParser(**parser_args)
-    except Exception as e:
-        raise Exception(f"Failed to create ArgumentParser: {e}")
-
-    # Validate version
-    if not isinstance(version, (str, int)):
-        raise_type_error_with_signature()
-
-    # Add version argument
-    parser.add_argument(
-        "--version",
-        action="version",
-        version=version if isinstance(version, str) else str(version)
-    )
-
-    return parser
+from .parser import create_parser
 
 
 def main():
     """Main CLI entry point."""
 
+    # TODO: Read info from pyproject.toml?
     parser = create_parser({
         "prog": "sldb",
         "description": "My CLI tool",
-    }, "0.0.1") # TODO: Read version from pyproject.toml?
+    }, "0.0.1")
 
     args = parser.parse_args()
 
