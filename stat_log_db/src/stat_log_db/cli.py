@@ -1,14 +1,11 @@
 import os
 import sys
 import argparse
-from dotenv import load_dotenv
 
 from .exceptions import raise_type_error_with_signature
 
-load_dotenv()
 
-
-def create_parser(parser_args: dict, version: str | int="0.0.1") -> argparse.ArgumentParser:
+def create_parser(parser_args: dict, version: str | int = "0.0.1") -> argparse.ArgumentParser:
     """Create the main argument parser."""
     # Validate parser_args
     if not isinstance(parser_args, dict):
@@ -41,7 +38,7 @@ def main():
     parser = create_parser({
         "prog": "sldb",
         "description": "My CLI tool",
-    }, "0.0.1")
+    }, "0.0.1") # TODO: Read version from pyproject.toml?
 
     args = parser.parse_args()
 

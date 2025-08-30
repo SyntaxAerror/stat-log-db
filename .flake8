@@ -1,0 +1,5 @@
+[flake8]
+ignore = E261
+max-line-length = 200
+exclude = .git,.github,__pycache__,.pytest_cache,.venv,.venv_test,.vscode
+max-complexity = 10
