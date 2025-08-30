@@ -1,0 +1,101 @@
+#! /bin/bash
+
+# Flags / state
+supported_installation_opts="d n"
+install=""
+uninstall=0
+clean=0
+supported_test_opts="p t a d"
+test=""
+
+while getopts ":i:t:chu" flag; do
+    case "${flag}" in
+        i) if [[ " $supported_installation_opts " =~ " $OPTARG " ]]; then
+                install="$OPTARG"
+            else
+                echo "Unsupported argument '$OPTARG' for '-$flag'. Please specify one of: $supported_installation_opts" >&2 && exit 1;
+            fi
+        ;;
+        u) uninstall=1;;
+        c) clean=1;;
+        t) if [[ " $supported_test_opts " =~ " $OPTARG " ]]; then
+                test="$OPTARG"
+            else
+                echo "Unsupported argument '$OPTARG' for '-$flag'. Please specify one of: $supported_test_opts" >&2 && exit 1;
+            fi
+        ;;
+        h) cat README.md && exit 0;;
+        :)
+            echo "Option -$OPTARG requires an argument" >&2; exit 1;;
+        ?) echo "Unknown option -$OPTARG" >&2; exit 1;;
+    esac
+done
+
+# Install [-i]
+if [ -n "$install" ]; then
+    case "$install" in
+        d)
+            echo "Installing (editable with dev extras)..."
+            python -m pip install -e ./stat_log_db[dev]
+            ;;
+        n)
+            echo "Installing..."
+            python -m pip install ./stat_log_db
+            ;;
+        *)
+            echo "Invalid install mode '$install'. Use one of: $supported_installation_opts" >&2
+            exit 1
+            ;;
+    esac
+fi
+
+# Run tests [-t]
+if [ -n "$test" ]; then
+    case "$test" in
+        d)
+            echo "Running stat_log_db tests..."
+            pytest ./stat_log_db/tests/
+            ;;
+        t)
+            echo "Running tools.sh tests..."
+            pytest ./tests/test_tools.py
+            ;;
+        p)
+            echo "Running project tests..."
+            pytest ./tests/
+            ;;
+        a)
+            echo "Running all tests..."
+            pytest
+            ;;
+        *)
+            echo "Invalid test mode '$test'. Use one of: $supported_test_opts" >&2
+            exit 1
+            ;;
+    esac
+fi
+
+# Clean artifacts [-c]
+if [ $clean -eq 1 ]; then
+    echo "Cleaning up workspace..."
+    dirs_to_clean=(
+        ".pytest_cache"
+        "tests/__pycache__"
+        "stat_log_db/build"
+        "stat_log_db/dist"
+        "stat_log_db/.pytest_cache"
+        "stat_log_db/tests/__pycache__"
+        "stat_log_db/src/stat_log_db.egg-info"
+        "stat_log_db/src/stat_log_db/__pycache__"
+        "stat_log_db/src/stat_log_db/commands/__pycache__"
+    )
+    rm -rf "${dirs_to_clean[@]}"
+    echo "Cleanup complete."
+fi
+
+# Uninstall [-u]
+if [ $uninstall -eq 1 ]; then
+    echo "Uninstalling..."
+    python -m pip uninstall -y stat_log_db
+    echo "Uninstall complete."
+fi

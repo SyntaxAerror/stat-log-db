@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stat-log-db"
+version = "0.0.1"
+description = ""
+readme = "README.md"
+requires-python = "==3.12.10"
+dependencies = [
+    "python-dotenv==1.1.1"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==8.4.1",
+    "pytest-cov==6.2.1",
+    "pdoc==15.0.4"
+]
+
+[project.scripts]
+sldb = "stat_log_db.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
