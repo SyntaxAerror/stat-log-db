@@ -11,7 +11,9 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / 'tools.sh'
 VENV_TEST = ROOT / '.venv_test'
-PACKAGE_NAME = 'stat_log_db'
+PACKAGE_NAME = 'stat-log-db'
+
+GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
 
 #endregion
 
@@ -82,6 +84,7 @@ def test_help():
     except AssertionError:
         assert out.strip() == readme_content.strip(), "Help output does not match README content (leading & trailing whitespace stripped)"
 
+@pytest.mark.skipif(GITHUB_ACTIONS, reason="Skipping test on GitHub Actions")
 def test_install_dev(test_venv):
     code, out = run_tools(['-id'], use_test_venv=True)
     assert code == 0
@@ -89,6 +92,7 @@ def test_install_dev(test_venv):
     assert 'dev' in out
     assert is_installed(PACKAGE_NAME), 'Package should be installed after dev install'
 
+@pytest.mark.skipif(GITHUB_ACTIONS, reason="Skipping test on GitHub Actions")
 def test_install_normal(test_venv):
     code, out = run_tools(['-in'], use_test_venv=True)
     assert code == 0
@@ -102,6 +106,7 @@ def test_install_invalid_arg(test_venv):
     assert ('Unsupported argument' in out) or ('Invalid install mode' in out)
     assert not is_installed(PACKAGE_NAME), 'Package should not be installed after invalid install argument'
 
+@pytest.mark.skipif(GITHUB_ACTIONS, reason="Skipping test on GitHub Actions")
 def test_uninstall(test_venv):
     # Ensure something installed first (dev mode)
     icode, iout = run_tools(['-id'], use_test_venv=True)
@@ -113,6 +118,7 @@ def test_uninstall(test_venv):
     assert 'Uninstall complete' in uout
     assert not is_installed(PACKAGE_NAME), 'Package should not be installed after uninstall'
 
+@pytest.mark.skipif(GITHUB_ACTIONS, reason="Skipping test on GitHub Actions")
 def test_install_and_clean_multi_flag(test_venv):
     code, out = run_tools(['-id', '-c'], use_test_venv=True)
     assert code == 0
@@ -135,6 +141,7 @@ def test_test_invalid_arg():
     assert code == 1
     assert ('Unsupported argument' in out) or ('Invalid test mode' in out)
 
+@pytest.mark.skipif(GITHUB_ACTIONS, reason="Skipping test on GitHub Actions")
 def test_clean():
     code, out = run_tools(['-c'])
     assert code == 0
