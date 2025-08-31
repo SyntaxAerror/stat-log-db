@@ -1,13 +1,13 @@
 import argparse
 
-from .exceptions import raise_type_error_with_signature
+from .exceptions import raise_auto_arg_type_error
 
 
 def create_parser(parser_args: dict, version: str | int = "0.0.1") -> argparse.ArgumentParser:
     """Create the main argument parser."""
     # Validate parser_args
     if not isinstance(parser_args, dict):
-        raise_type_error_with_signature("parser_args")
+        raise_auto_arg_type_error("parser_args")
     # Default formatter class
     if "formatter_class" not in parser_args:
         parser_args["formatter_class"] = argparse.RawDescriptionHelpFormatter
@@ -18,7 +18,7 @@ def create_parser(parser_args: dict, version: str | int = "0.0.1") -> argparse.A
 
     # Validate version
     if not isinstance(version, (str, int)):
-        raise_type_error_with_signature("version")
+        raise_auto_arg_type_error("version")
 
     # Add version argument
     parser.add_argument(

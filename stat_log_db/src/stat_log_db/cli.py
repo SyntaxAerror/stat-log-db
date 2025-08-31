@@ -2,7 +2,7 @@ import os
 import sys
 
 from .parser import create_parser
-from .db import Database
+from .db import Database, BaseConnection
 
 
 def main():
@@ -16,16 +16,21 @@ def main():
 
     args = parser.parse_args()
 
-    print(f"{args=}")
+    # print(f"{args=}")
 
-    sl_db = Database('sl_db.sqlite')
+    db_filename = 'sl_db.sqlite'
+    sl_db = Database(db_filename)
+    con = sl_db.init_db(False)
+    if isinstance(con, BaseConnection):
+        con.execute("CREATE TABLE IF NOT EXISTS logs (id INTEGER PRIMARY KEY, message TEXT);")
+        con.execute("INSERT INTO logs (message) VALUES (?);", ("Hello, world!",))
+        con.commit()
+        con.execute("SELECT * FROM logs;")
+        sql_logs = con.fetchall()
+        print(sql_logs)
 
-    sl_db.execute("CREATE TABLE IF NOT EXISTS logs (id INTEGER PRIMARY KEY, message TEXT)")
-    sl_db.execute("INSERT INTO logs (message) VALUES (?)", ("Hello, world!",))
-    sl_db.commit()
-    sl_db.execute("SELECT * FROM logs")
-    sql_logs = sl_db.fetchall()
-    print(sql_logs)
+    sl_db.close_db()
+    # os.remove(db_filename)
 
 if __name__ == "__main__":
     main()

@@ -1,6 +1,8 @@
 
-def raise_type_error_with_signature(argument_name: str | list[str] | tuple[str, ...] | set[str] | None = None):
-    """Generate a standard type error message."""
+def raise_auto_arg_type_error(argument_name: str | list[str] | tuple[str, ...] | set[str] | None = None):
+    """
+    Raise a TypeError with a standard message for arguments not matching the parameter's requested type.
+    """
     message = f"TypeError with one or more of argument(s): {argument_name}"
     try:
         import inspect
