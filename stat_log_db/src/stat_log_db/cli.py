@@ -9,16 +9,19 @@ def main():
     """Main CLI entry point."""
 
     # TODO: Read info from pyproject.toml?
-    parser = create_parser({
-        "prog": "sldb",
-        "description": "My CLI tool",
-    }, "0.0.1")
+    # parser = create_parser({
+    #     "prog": "sldb",
+    #     "description": "My CLI tool",
+    # }, "0.0.1")
 
-    args = parser.parse_args()
+    # args = parser.parse_args()
 
     # print(f"{args=}")
 
-    sl_db = MemDB(":memory:", True, True)
+    sl_db = MemDB({
+        "is_mem": True,
+        "fkey_constraint": True
+    })
     con = sl_db.init_db(True)
     con.create_table("test", [('notes', 'TEXT')], False, True)
     con.execute("INSERT INTO test (notes) VALUES (?);", ("Hello world!",))

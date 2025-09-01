@@ -1,34 +1,32 @@
 # from abc import ABC, abstractmethod
 import sqlite3
 import uuid
+from typing import Any
 
 
 from .exceptions import raise_auto_arg_type_error
 
 
 class Database():
-    def __init__(self, db_name: str | None = None, is_mem: bool = False, fkey_constraint: bool = True):
+    def __init__(self, options: dict[str, Any] = {}):
         # Validate arguments
-        # database name
-        if db_name is None:
-            self._db_name = str(uuid.uuid4())
-        elif not isinstance(db_name, str):
-            raise_auto_arg_type_error("db_name")
-        else:
-            self._db_name = db_name
-        # is memory or file database
-        if not isinstance(is_mem, bool):
-            raise_auto_arg_type_error("is_mem")
-        self._in_memory = is_mem
-        self._is_file = not is_mem
-        # database file name
-        if is_mem:
-            self._db_file_name = ":memory:"
-        else:
-            self._db_file_name = self._db_name.replace(" ", "_")
-        if not isinstance(fkey_constraint, bool):
-            raise_auto_arg_type_error("fkey_constraint")
-        self._fkey_constraint = fkey_constraint
+        valid_options = {
+            "db_name": str,
+            "is_mem": bool,
+            "fkey_constraint": bool
+        }
+        for opt, opt_type in options.items():
+            if opt not in valid_options.keys():
+                raise ValueError(f"Invalid option provided: '{opt}'. Must be one of {list(valid_options.keys())}.")
+            expected_type = valid_options[opt]
+            if not isinstance(opt_type, expected_type):
+                raise TypeError(f"Option '{opt}' must be of type {expected_type.__name__}, got {type(opt_type).__name__}.")
+        # Assign arguments to class attributes
+        self._in_memory: bool = options.get("is_mem", False)
+        self._is_file: bool = bool(not self._in_memory)
+        self._db_name: str = options.get("db_name", str(uuid.uuid4()))
+        self._db_file_name: str = ":memory:" if self._in_memory else self._db_name.replace(" ", "_")
+        self._fkey_constraint: bool = options.get("fkey_constraint", True)
         # Keep track of active connections (to ensure that they are closed)
         self._connections: dict[str, BaseConnection] = dict()
 
@@ -166,8 +164,8 @@ class Database():
 
 
 class MemDB(Database):
-    def __init__(self, db_name: str | None = None, is_mem: bool = False, fkey_constraint: bool = True):
-        super().__init__(db_name, is_mem, fkey_constraint)
+    def __init__(self, options: dict[str, Any] = {}):
+        super().__init__(options=options)
         if not self.in_memory:
             raise ValueError("MemDB can only be used for in-memory databases.")
 
@@ -191,8 +189,8 @@ class MemDB(Database):
 
 
 class FileDB(Database):
-    def __init__(self, db_name: str | None = None, fkey_constraint: bool = True):
-        super().__init__(db_name, fkey_constraint)
+    def __init__(self, options: dict[str, Any] = {}):
+        super().__init__(options=options)
         if not self.is_file:
             raise ValueError("FileDB can only be used for file-based databases.")
 
@@ -261,7 +259,7 @@ class BaseConnection:
                 self.connection.commit()
 
     def _open(self):
-        self._connection = sqlite3.connect(self.db_name)
+        self._connection = sqlite3.connect(self.db_file_name)
         self._cursor = self._connection.cursor()
 
     def open(self):
