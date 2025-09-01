@@ -44,6 +44,37 @@ def is_installed(package: str) -> bool:
     return result.returncode == 0
 
 
+def _find_bash_executable(): # TODO: Improve this
+    """Find bash executable, preferring Git Bash on Windows."""
+    if os.name != "nt":
+        return "bash"
+    # Common Git Bash locations on Windows
+    common_paths = [
+        r"C:\Program Files\Git\bin\bash.exe",
+        r"C:\Program Files (x86)\Git\bin\bash.exe", 
+        r"C:\Users\{}\AppData\Local\Programs\Git\bin\bash.exe".format(os.getenv("USERNAME", "")),
+        r"C:\Git\bin\bash.exe",
+    ]
+    # Check common paths first
+    for path in common_paths:
+        if os.path.isfile(path):
+            return path
+    # Try to find bash using 'where' command
+    try:
+        result = subprocess.run(["where", "bash"], capture_output=True, text=True, check=True)
+        bash_path = result.stdout.strip().split('\n')[0]  # Get first result
+        if os.path.isfile(bash_path):
+            return bash_path
+    except (subprocess.CalledProcessError, FileNotFoundError, IndexError):
+        pass
+    # If we get here, bash was not found
+    raise FileNotFoundError(
+        "Git Bash not found. Please install Git for Windows from https://git-scm.com/download/win "
+        "or ensure bash.exe is in your PATH. Tried the following locations:\n" +
+        "\n".join(f"  - {path}" for path in common_paths)
+    )
+
+
 def run_tools(args, use_test_venv=False):
     """Run tools.sh returning (code, stdout+stderr)."""
     env = os.environ.copy()
@@ -53,7 +84,7 @@ def run_tools(args, use_test_venv=False):
         env["PATH"] = str(scripts_dir) + os.pathsep + env.get("PATH", "")
         env["VIRTUAL_ENV"] = str(VENV_TEST)
         env["PYTHONHOME"] = ""  # ensure venv python resolution
-    bash = r"C:\Program Files\Git\bin\bash.exe" if os.name == "nt" else "bash"  # TODO: indicate to the user that they need git bash
+    bash = _find_bash_executable()
     proc = subprocess.run([bash, str(SCRIPT), *args], capture_output=True, text=True, cwd=ROOT, env=env)
     return proc.returncode, proc.stdout + proc.stderr
 

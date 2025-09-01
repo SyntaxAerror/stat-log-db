@@ -1,4 +1,5 @@
 # from abc import ABC, abstractmethod
+import re
 import sqlite3
 import uuid
 from typing import Any
@@ -317,22 +318,88 @@ class BaseConnection:
     def fetchall(self):
         return self.cursor.fetchall()
 
+    def _validate_sql_identifier(self, identifier: str, identifier_type: str = "identifier") -> str:
+        """
+        Validate and sanitize SQL identifiers (table names, column names) to prevent SQL injection.
+        
+        Args:
+            identifier: The identifier to validate
+            identifier_type: Type of identifier for error messages (e.g., "table name", "column name")
+            
+        Returns:
+            The validated identifier
+            
+        Raises:
+            ValueError: If the identifier is invalid or potentially dangerous
+        """
+        if not isinstance(identifier, str):
+            raise TypeError(f"SQL {identifier_type} must be a string, got {type(identifier).__name__}")
+        
+        if len(identifier) == 0:
+            raise ValueError(f"SQL {identifier_type} cannot be empty")
+        
+        # Check for valid identifier pattern: starts with letter/underscore, contains only alphanumeric/underscore
+        if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', identifier):
+            raise ValueError(f"Invalid SQL {identifier_type}: '{identifier}'. Must start with letter or underscore and contain only letters, numbers, and underscores.")
+        
+        # Check against SQLite reserved words (common ones that could cause issues)
+        reserved_words = {
+            'abort', 'action', 'add', 'after', 'all', 'alter', 'analyze', 'and', 'as', 'asc',
+            'attach', 'autoincrement', 'before', 'begin', 'between', 'by', 'cascade', 'case',
+            'cast', 'check', 'collate', 'column', 'commit', 'conflict', 'constraint', 'create',
+            'cross', 'current', 'current_date', 'current_time', 'current_timestamp', 'database',
+            'default', 'deferrable', 'deferred', 'delete', 'desc', 'detach', 'distinct', 'do',
+            'drop', 'each', 'else', 'end', 'escape', 'except', 'exclusive', 'exists', 'explain',
+            'fail', 'filter', 'following', 'for', 'foreign', 'from', 'full', 'glob', 'group',
+            'having', 'if', 'ignore', 'immediate', 'in', 'index', 'indexed', 'initially', 'inner',
+            'insert', 'instead', 'intersect', 'into', 'is', 'isnull', 'join', 'key', 'left',
+            'like', 'limit', 'match', 'natural', 'no', 'not', 'notnull', 'null', 'of', 'offset',
+            'on', 'or', 'order', 'outer', 'over', 'partition', 'plan', 'pragma', 'preceding',
+            'primary', 'query', 'raise', 'range', 'recursive', 'references', 'regexp', 'reindex',
+            'release', 'rename', 'replace', 'restrict', 'right', 'rollback', 'row', 'rows',
+            'savepoint', 'select', 'set', 'table', 'temp', 'temporary', 'then', 'to', 'transaction',
+            'trigger', 'unbounded', 'union', 'unique', 'update', 'using', 'vacuum', 'values',
+            'view', 'virtual', 'when', 'where', 'window', 'with', 'without'
+        }
+        
+        if identifier.lower() in reserved_words:
+            raise ValueError(f"SQL {identifier_type} '{identifier}' is a reserved word and cannot be used")
+        
+        return identifier
+
+    def _escape_sql_identifier(self, identifier: str) -> str:
+        """
+        Escape SQL identifier by wrapping in double quotes and escaping any internal quotes.
+        This should only be used after validation.
+        """
+        # Escape any double quotes in the identifier by doubling them
+        escaped = identifier.replace('"', '""')
+        return f'"{escaped}"'
+
     def create_table(self, table_name: str, columns: list[tuple[str, str]], temp_table: bool = True, raise_if_exists: bool = True):
         # Validate table_name argument
         if not isinstance(table_name, str):
             raise_auto_arg_type_error("table_name")
         if len(table_name) == 0:
             raise ValueError(f"'table_name' argument of create_table cannot be an empty string!")
+        
+        # Validate and sanitize table name
+        validated_table_name = self._validate_sql_identifier(table_name, "table name")
+        escaped_table_name = self._escape_sql_identifier(validated_table_name)
+        
         if not isinstance(raise_if_exists, bool):
             raise_auto_arg_type_error("raise_if_exists")
-        # Check if table already exists
+        
+        # Check if table already exists using parameterized query
         if raise_if_exists:
-            self.cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?;", (table_name,))
+            self.cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?;", (validated_table_name,))
             if self.cursor.fetchone() is not None:
-                raise ValueError(f"Table '{table_name}' already exists.")
+                raise ValueError(f"Table '{validated_table_name}' already exists.")
+        
         # Validate temp_table argument
         if not isinstance(temp_table, bool):
             raise_auto_arg_type_error("temp_table")
+        
         # Validate columns argument
         if (not isinstance(columns, list)) or (not all(
             isinstance(col, tuple) and len(col) == 2
@@ -340,19 +407,43 @@ class BaseConnection:
             and isinstance(col[1], str)
         for col in columns)):
             raise_auto_arg_type_error("columns")
-        # Construct columns portion of query
-        # TODO: construct parameters for columns rather than f-string to prevent SQL injection
-        columns_qstr = ""
-        for col in columns:
-            columns_qstr += f"{col[0]} {col[1]},\n"
-        columns_qstr = columns_qstr.rstrip(",\n") # Remove trailing comma and newline
-        # Assemble full query
-        query = f"""--sql
-            CREATE{" TEMPORARY" if temp_table else ""} TABLE IF NOT EXISTS '{table_name}' (
+        
+        # Validate and construct columns portion of query
+        validated_columns = []
+        for col_name, col_type in columns:
+            # Validate column name
+            validated_col_name = self._validate_sql_identifier(col_name, "column name")
+            escaped_col_name = self._escape_sql_identifier(validated_col_name)
+            
+            # Validate column type - allow only safe, known SQLite types
+            allowed_types = {
+                'TEXT', 'INTEGER', 'REAL', 'BLOB', 'NUMERIC',
+                'VARCHAR', 'CHAR', 'NVARCHAR', 'NCHAR',
+                'CLOB', 'DATE', 'DATETIME', 'TIMESTAMP',
+                'BOOLEAN', 'DECIMAL', 'DOUBLE', 'FLOAT',
+                'INT', 'BIGINT', 'SMALLINT', 'TINYINT'
+            }
+            
+            # Allow type specifications with length/precision (e.g., VARCHAR(50), DECIMAL(10,2))
+            base_type = re.match(r'^([A-Z]+)', col_type.upper())
+            if not base_type or base_type.group(1) not in allowed_types:
+                raise ValueError(f"Unsupported column type: '{col_type}'. Must be one of: {', '.join(sorted(allowed_types))}")
+            
+            # Basic validation for type specification format
+            if not re.match(r'^[A-Z]+(\([0-9,\s]+\))?$', col_type.upper()):
+                raise ValueError(f"Invalid column type format: '{col_type}'")
+            
+            validated_columns.append(f"{escaped_col_name} {col_type.upper()}")
+        
+        columns_qstr = ",\n                ".join(validated_columns)
+        
+        # Assemble full query with escaped identifiers
+        temp_keyword = " TEMPORARY" if temp_table else ""
+        query = f"""CREATE{temp_keyword} TABLE IF NOT EXISTS {escaped_table_name} (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 {columns_qstr}
-            );
-        """
+            );"""
+        
         self.execute(query)
 
     def drop_table(self, table_name: str, raise_if_not_exists: bool = False):
@@ -361,13 +452,22 @@ class BaseConnection:
             raise_auto_arg_type_error("table_name")
         if len(table_name) == 0:
             raise ValueError(f"'table_name' argument of drop_table cannot be an empty string!")
+        
+        # Validate and sanitize table name
+        validated_table_name = self._validate_sql_identifier(table_name, "table name")
+        escaped_table_name = self._escape_sql_identifier(validated_table_name)
+        
         if not isinstance(raise_if_not_exists, bool):
             raise_auto_arg_type_error("raise_if_not_exists")
+        
+        # Check if table exists using parameterized query
         if raise_if_not_exists:
-            self.cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}';")
+            self.cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?;", (validated_table_name,))
             if self.cursor.fetchone() is None:
-                raise ValueError(f"Table '{table_name}' does not exist.")
-        self.cursor.execute(f"DROP TABLE IF EXISTS '{table_name}';")
+                raise ValueError(f"Table '{validated_table_name}' does not exist.")
+        
+        # Execute DROP statement with escaped identifier
+        self.cursor.execute(f"DROP TABLE IF EXISTS {escaped_table_name};")
 
     # def read(self):
         
