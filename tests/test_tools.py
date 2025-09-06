@@ -70,8 +70,8 @@ def _find_bash_executable(): # TODO: Improve this
     # If we get here, bash was not found
     raise FileNotFoundError(
         "Git Bash not found. Please install Git for Windows from https://git-scm.com/download/win "
-        "or ensure bash.exe is in your PATH. Tried the following locations:\n" +
-        "\n".join(f"  - {path}" for path in common_paths)
+        "or ensure bash.exe is in your PATH. Tried the following locations:\n"
+        + "\n".join(f"  - {path}" for path in common_paths)
     )
 
 
@@ -120,7 +120,6 @@ def test_help():
         assert out == readme_content, "Help output does not match README content"
     except AssertionError:
         assert out.strip() == readme_content.strip(), "Help output does not match README content (leading & trailing whitespace stripped)"
-
 
 @pytest.mark.skipif(GITHUB_ACTIONS, reason="Skipping test on GitHub Actions")
 def test_install_dev(test_venv):
@@ -184,6 +183,14 @@ def test_test_invalid_arg():
     code, out = run_tools(["-tx"])
     assert code == 1
     assert ("Unsupported argument" in out) or ("Invalid test mode" in out)
+
+
+@pytest.mark.skipif(GITHUB_ACTIONS, reason="Skipping test on GitHub Actions")
+def test_test_style():
+    code, out = run_tools(["-ts"])
+    assert code == 0
+    assert "Running style tests" in out
+    assert "flake8" in out
 
 
 @pytest.mark.skipif(GITHUB_ACTIONS, reason="Skipping test on GitHub Actions")

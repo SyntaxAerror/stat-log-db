@@ -34,5 +34,6 @@ def main():
     if sl_db.is_file:
         os.remove(sl_db.file_name)
 
+
 if __name__ == "__main__":
     main()
