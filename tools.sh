@@ -5,7 +5,7 @@ supported_installation_opts="d n"
 install=""
 uninstall=0
 clean=0
-supported_test_opts="p t a d"
+supported_test_opts="p t a d s"
 test=""
 
 while getopts ":i:t:chu" flag; do
@@ -67,6 +67,11 @@ if [ -n "$test" ]; then
         a)
             echo "Running all tests..."
             pytest
+            ;;
+        s)
+            echo "Running style tests (flake8)..."
+            flake8 .
+            # flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
             ;;
         *)
             echo "Invalid test mode '$test'. Use one of: $supported_test_opts" >&2

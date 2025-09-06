@@ -7,14 +7,15 @@ name = "stat-log-db"
 version = "0.0.1"
 description = ""
 readme = "README.md"
-requires-python = "==3.12.10"
+requires-python = ">=3.12.10"
 dependencies = [
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest==8.4.1",
-    "pytest-cov==6.2.1"
+    "pytest-cov==6.2.1",
+    "flake8==7.3.0"
 ]
 
 [project.scripts]
