@@ -121,6 +121,7 @@ def test_help():
     except AssertionError:
         assert out.strip() == readme_content.strip(), "Help output does not match README content (leading & trailing whitespace stripped)"
 
+
 @pytest.mark.skipif(GITHUB_ACTIONS, reason="Skipping test on GitHub Actions")
 def test_install_dev(test_venv):
     code, out = run_tools(["-id"], use_test_venv=True)

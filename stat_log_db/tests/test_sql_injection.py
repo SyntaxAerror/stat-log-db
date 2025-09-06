@@ -6,11 +6,12 @@ import pytest
 import sys
 from pathlib import Path
 
+from stat_log_db.db import MemDB
+
+
 # Add the src directory to the path to import the module
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "stat_log_db" / "src"))
-
-from stat_log_db.db import MemDB
 
 
 @pytest.fixture
