@@ -51,7 +51,7 @@ def _find_bash_executable(): # TODO: Improve this
     # Common Git Bash locations on Windows
     common_paths = [
         r"C:\Program Files\Git\bin\bash.exe",
-        r"C:\Program Files (x86)\Git\bin\bash.exe", 
+        r"C:\Program Files (x86)\Git\bin\bash.exe",
         r"C:\Users\{}\AppData\Local\Programs\Git\bin\bash.exe".format(os.getenv("USERNAME", "")),
         r"C:\Git\bin\bash.exe",
     ]

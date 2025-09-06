@@ -451,7 +451,7 @@ class BaseConnection:
         if not isinstance(table_name, str):
             raise_auto_arg_type_error("table_name")
         if len(table_name) == 0:
-            raise ValueError(f"'table_name' argument of drop_table cannot be an empty string!")
+            raise ValueError("'table_name' argument of drop_table cannot be an empty string!")
         
         # Validate and sanitize table name
         validated_table_name = self._validate_sql_identifier(table_name, "table name")
