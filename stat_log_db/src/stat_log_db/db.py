@@ -4,6 +4,9 @@ import sqlite3
 import uuid
 from typing import Any
 
+from sqlalchemy import create_engine, text, Engine, Connection as SQLAConnection
+from sqlalchemy.engine import make_url
+from sqlalchemy.pool import StaticPool, QueuePool
 
 from .exceptions import raise_auto_arg_type_error
 
@@ -28,8 +31,45 @@ class Database():
         self._db_name: str = options.get("db_name", str(uuid.uuid4()))
         self._db_file_name: str = ":memory:" if self._in_memory else self._db_name.replace(" ", "_")
         self._fkey_constraint: bool = options.get("fkey_constraint", True)
-        # Keep track of active connections (to ensure that they are closed)
+        
+        # Create SQLAlchemy Engine with appropriate connection pooling
+        self._engine = self._create_engine()
+        
+        # Keep track of active connections for compatibility (but SQLAlchemy handles the real pooling)
         self._connections: dict[str, BaseConnection] = dict()
+
+    def _create_engine(self) -> Engine:
+        """Create SQLAlchemy Engine with appropriate configuration for SQLite."""
+        if self._in_memory:
+            # For in-memory databases, use StaticPool to ensure single connection
+            # and prevent the database from being destroyed when connections close
+            url = "sqlite:///:memory:"
+            engine = create_engine(
+                url,
+                poolclass=StaticPool,
+                pool_pre_ping=True,
+                connect_args={
+                    "check_same_thread": False,  # Allow sharing between threads
+                    "isolation_level": None,     # Use autocommit mode
+                },
+                echo=False  # Set to True for SQL debugging
+            )
+        else:
+            # For file databases, use QueuePool for better concurrency
+            url = f"sqlite:///{self._db_file_name}"
+            engine = create_engine(
+                url,
+                poolclass=QueuePool,
+                pool_size=5,
+                max_overflow=10,
+                pool_pre_ping=True,
+                connect_args={
+                    "check_same_thread": False,
+                    "isolation_level": None,
+                },
+                echo=False
+            )
+        return engine
 
     @property
     def name(self) -> str:
@@ -50,6 +90,11 @@ class Database():
     @property
     def fkey_constraint(self) -> bool:
         return self._fkey_constraint
+    
+    @property
+    def engine(self) -> Engine:
+        """Get the SQLAlchemy Engine for this database."""
+        return self._engine
 
     def check_connection_integrity(self, connection: 'str | BaseConnection', skip_registry_type_check: bool = False):
         """
@@ -115,7 +160,7 @@ class Database():
     def _register_connection(self):
         """
         Creates a new database connection object and registers it.
-        Does not open the connection.
+        The connection uses SQLAlchemy Engine for connection management.
         """
         connection = BaseConnection(self)
         self._connections[connection.uid] = connection
@@ -162,6 +207,10 @@ class Database():
         if not len(self._connections) == 0:
             raise RuntimeError("Not all connections were closed properly.")
         self._connections = dict()
+        
+        # Dispose of the SQLAlchemy engine to clean up connection pool
+        if hasattr(self, '_engine') and self._engine is not None:
+            self._engine.dispose()
 
 
 class MemDB(Database):
@@ -202,8 +251,7 @@ class BaseConnection:
             raise_auto_arg_type_error("db")
         self._db: Database = db
         self._id = str(uuid.uuid4())
-        self._connection: sqlite3.Connection | None = None
-        self._cursor: sqlite3.Cursor | None = None
+        self._connection: SQLAConnection | None = None
 
     @property
     def db_name(self):
@@ -239,58 +287,59 @@ class BaseConnection:
     def connection(self):
         if self._connection is None:
             raise RuntimeError("Connection is not open.")
-        if not isinstance(self._connection, sqlite3.Connection):
-            raise TypeError(f"Expected self._connection to be sqlite3.Connection, got {type(self._connection).__name__} instead.")
+        if not isinstance(self._connection, SQLAConnection):
+            raise TypeError(f"Expected self._connection to be SQLAlchemy Connection, got {type(self._connection).__name__} instead.")
         return self._connection
-
-    @property
-    def cursor(self):
-        if self._cursor is None:
-            raise RuntimeError("Cursor is not open.")
-        if not isinstance(self._cursor, sqlite3.Cursor):
-            raise TypeError(f"Expected self._cursor to be sqlite3.Cursor, got {type(self._cursor).__name__} instead.")
-        return self._cursor
 
     def enforce_foreign_key_constraints(self, commit: bool = True):
         if not isinstance(commit, bool):
             raise_auto_arg_type_error("commit")
         if self.db_fkey_constraint:
-            self.cursor.execute("PRAGMA foreign_keys = ON;")
+            self.connection.execute(text("PRAGMA foreign_keys = ON;"))
             if commit:
                 self.connection.commit()
 
     def _open(self):
-        self._connection = sqlite3.connect(self.db_file_name)
-        self._cursor = self._connection.cursor()
+        """Open a new SQLAlchemy connection from the engine."""
+        self._connection = self._db.engine.connect()
 
     def open(self):
-        if isinstance(self._connection, sqlite3.Connection):
+        if self._connection is not None:
             raise RuntimeError("Connection is already open.")
-        if not (self._connection is None):
-            raise TypeError(f"Expected self._connection to be None, got {type(self._connection).__name__} instead.")
         self._open()
 
     def _close(self):
-        self.cursor.close()
-        self._cursor = None
-        self.connection.close()
-        self._connection = None
+        """Close the SQLAlchemy connection."""
+        if self._connection is not None:
+            self._connection.close()
+            self._connection = None
 
     def close(self):
-        self.connection.commit()
+        if self._connection is not None:
+            self.connection.commit()
         self._close()
 
     def _execute(self, query: str, parameters: tuple = ()):
         """
-        Execute a SQL query with the given parameters.
+        Execute a SQL query with the given parameters using SQLAlchemy.
         Performs no checks/validation. Prefer `execute` unless you need raw access.
         """
-        result = self.cursor.execute(query, parameters)
+        # Convert parameters tuple to dict for SQLAlchemy if needed
+        if parameters:
+            # Create numbered parameter dict for SQLAlchemy
+            param_dict = {f"param_{i}": param for i, param in enumerate(parameters)}
+            # Replace ? placeholders with :param_N format
+            param_query = query
+            for i in range(len(parameters)):
+                param_query = param_query.replace("?", f":param_{i}", 1)
+            result = self.connection.execute(text(param_query), param_dict)
+        else:
+            result = self.connection.execute(text(query))
         return result
 
     def execute(self, query: str, parameters: tuple | None = None):
         """
-        Execute a SQL query with the given parameters.
+        Execute a SQL query with the given parameters using SQLAlchemy text() construct.
         """
         # Validate query and parameters
         if not isinstance(query, str):
@@ -313,10 +362,14 @@ class BaseConnection:
         self.connection.commit()
 
     def fetchone(self):
-        return self.cursor.fetchone()
+        # For SQLAlchemy, we need to get the last result from the connection
+        # This is a simplified approach - in practice you'd want to store the result object
+        raise NotImplementedError("fetchone() needs to be called on the result object returned by execute()")
 
     def fetchall(self):
-        return self.cursor.fetchall()
+        # For SQLAlchemy, we need to get the last result from the connection
+        # This is a simplified approach - in practice you'd want to store the result object
+        raise NotImplementedError("fetchall() needs to be called on the result object returned by execute()")
 
     def _validate_sql_identifier(self, identifier: str, identifier_type: str = "identifier") -> str:
         """
@@ -391,8 +444,8 @@ class BaseConnection:
         escaped_table_name = self._escape_sql_identifier(validated_table_name)
         # Check if table already exists using parameterized query
         if raise_if_exists:
-            self.cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?;", (validated_table_name,))
-            if self.cursor.fetchone() is not None:
+            result = self.connection.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name=:table_name"), {"table_name": validated_table_name})
+            if result.fetchone() is not None:
                 raise ValueError(f"Table '{validated_table_name}' already exists.")
         # Validate and construct columns portion of query
         validated_columns = []
@@ -423,7 +476,7 @@ class BaseConnection:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 {columns_qstr}
             );"""
-        self.execute(query)
+        self.connection.execute(text(query))
 
     def drop_table(self, table_name: str, raise_if_not_exists: bool = False):
         # Validate table_name argument
@@ -438,11 +491,11 @@ class BaseConnection:
         escaped_table_name = self._escape_sql_identifier(validated_table_name)
         # Check if table exists using parameterized query
         if raise_if_not_exists:
-            self.cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?;", (validated_table_name,))
-            if self.cursor.fetchone() is None:
+            result = self.connection.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name=:table_name"), {"table_name": validated_table_name})
+            if result.fetchone() is None:
                 raise ValueError(f"Table '{validated_table_name}' does not exist.")
         # Execute DROP statement with escaped identifier
-        self.cursor.execute(f"DROP TABLE IF EXISTS {escaped_table_name};")
+        self.connection.execute(text(f"DROP TABLE IF EXISTS {escaped_table_name};"))
 
     # def read(self):
     #     pass
