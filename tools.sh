@@ -5,10 +5,12 @@ supported_installation_opts="d n"
 install=""
 uninstall=0
 clean=0
+supported_doc_opts="h s"
+doc=""
 supported_test_opts="p t a d s"
 test=""
 
-while getopts ":i:t:chu" flag; do
+while getopts ":i:t:d:chu" flag; do
     case "${flag}" in
         i) if [[ " $supported_installation_opts " =~ " $OPTARG " ]]; then
                 install="$OPTARG"
@@ -22,6 +24,12 @@ while getopts ":i:t:chu" flag; do
                 test="$OPTARG"
             else
                 echo "Unsupported argument '$OPTARG' for '-$flag'. Please specify one of: $supported_test_opts" >&2 && exit 1;
+            fi
+        ;;
+        d) if [[ " $supported_doc_opts " =~ " $OPTARG " ]]; then
+                doc="$OPTARG"
+            else
+                echo "Unsupported argument '$OPTARG' for '-$flag'. Please specify one of: $supported_doc_opts" >&2 && exit 1;
             fi
         ;;
         h) cat README.md && exit 0;;
@@ -75,6 +83,27 @@ if [ -n "$test" ]; then
             ;;
         *)
             echo "Invalid test mode '$test'. Use one of: $supported_test_opts" >&2
+            exit 1
+            ;;
+    esac
+fi
+
+# Documentation [-d]
+if [ -n "$doc" ]; then
+    case "$doc" in
+        h)
+            echo "Generating HTML documentation..."
+            if [ ! -d "stat_log_db/docs" ]; then
+                mkdir -p stat_log_db/docs
+            fi
+            pdoc --output-dir stat_log_db/docs stat_log_db
+            ;;
+        s)
+            echo "Hosting documentation..."
+            pdoc stat_log_db --host localhost
+            ;;
+        *)
+            echo "Invalid doc mode '$doc'. Use one of: $supported_doc_opts" >&2
             exit 1
             ;;
     esac
