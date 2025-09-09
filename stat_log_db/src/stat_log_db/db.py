@@ -4,7 +4,8 @@ import sqlite3
 import uuid
 from typing import Any
 
-from sqlalchemy import create_engine, text, Engine, Connection as SQLAConnection
+from sqlalchemy import create_engine, text, Engine, Connection as SQLAConnection, MetaData, Table, Column
+from sqlalchemy import Integer, String, Text, Boolean, Float, DateTime, LargeBinary
 from sqlalchemy.engine import make_url
 from sqlalchemy.pool import StaticPool, QueuePool
 
@@ -258,89 +259,275 @@ class BaseConnection:
 
     def _validate_identifier(self, identifier: str, identifier_type: str = "identifier") -> str:
         """
-        Basic validation for identifiers. SQLAlchemy handles SQL injection protection.
+        Validate SQL identifiers with reserved word checking and basic format validation.
+        SQLAlchemy handles parameterization, but we still validate identifier safety.
         """
         if not isinstance(identifier, str):
             raise TypeError(f"SQL {identifier_type} must be a string, got {type(identifier).__name__}")
         if len(identifier) == 0:
             raise ValueError(f"SQL {identifier_type} cannot be empty")
-        # Basic validation - SQLAlchemy will handle the rest
+        
+        # Basic format validation
         if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', identifier):
             raise ValueError(f"Invalid SQL {identifier_type}: '{identifier}'. Must start with letter or underscore and contain only letters, numbers, and underscores.")
+        
+        # Check against SQL reserved words
+        sql_reserved_words = {
+            'ABORT', 'ACTION', 'ADD', 'AFTER', 'ALL', 'ALTER', 'ANALYZE', 'AND', 'AS', 'ASC',
+            'ATTACH', 'AUTOINCREMENT', 'BEFORE', 'BEGIN', 'BETWEEN', 'BY', 'CASCADE', 'CASE',
+            'CAST', 'CHECK', 'COLLATE', 'COLUMN', 'COMMIT', 'CONFLICT', 'CONSTRAINT', 'CREATE',
+            'CROSS', 'CURRENT_DATE', 'CURRENT_TIME', 'CURRENT_TIMESTAMP', 'DATABASE', 'DEFAULT',
+            'DEFERRABLE', 'DEFERRED', 'DELETE', 'DESC', 'DETACH', 'DISTINCT', 'DROP', 'EACH',
+            'ELSE', 'END', 'ESCAPE', 'EXCEPT', 'EXCLUSIVE', 'EXISTS', 'EXPLAIN', 'FAIL', 'FOR',
+            'FOREIGN', 'FROM', 'FULL', 'GLOB', 'GROUP', 'HAVING', 'IF', 'IGNORE', 'IMMEDIATE',
+            'IN', 'INDEX', 'INDEXED', 'INITIALLY', 'INNER', 'INSERT', 'INSTEAD', 'INTERSECT',
+            'INTO', 'IS', 'ISNULL', 'JOIN', 'KEY', 'LEFT', 'LIKE', 'LIMIT', 'MATCH', 'NATURAL',
+            'NO', 'NOT', 'NOTNULL', 'NULL', 'OF', 'OFFSET', 'ON', 'OR', 'ORDER', 'OUTER', 'PLAN',
+            'PRAGMA', 'PRIMARY', 'QUERY', 'RAISE', 'RECURSIVE', 'REFERENCES', 'REGEXP', 'REINDEX',
+            'RELEASE', 'RENAME', 'REPLACE', 'RESTRICT', 'RIGHT', 'ROLLBACK', 'ROW', 'SAVEPOINT',
+            'SELECT', 'SET', 'TABLE', 'TEMP', 'TEMPORARY', 'THEN', 'TO', 'TRANSACTION', 'TRIGGER',
+            'UNION', 'UNIQUE', 'UPDATE', 'USING', 'VACUUM', 'VALUES', 'VIEW', 'VIRTUAL', 'WHEN',
+            'WHERE', 'WITH', 'WITHOUT'
+        }
+        
+        if identifier.upper() in sql_reserved_words:
+            raise ValueError(f"SQL {identifier_type} '{identifier}' is a reserved word")
+        
         return identifier
 
+    def _validate_column_type(self, col_type: str) -> str:
+        """
+        Validate SQLite column type specification.
+        Returns the normalized (uppercase) column type.
+        """
+        if not isinstance(col_type, str):
+            raise TypeError(f"Column type must be a string, got {type(col_type).__name__}")
+        
+        # Normalize to uppercase
+        normalized_type = col_type.upper().strip()
+        
+        # Define allowed SQLite types
+        allowed_types = {
+            'TEXT', 'INTEGER', 'REAL', 'BLOB', 'NUMERIC',
+            'VARCHAR', 'CHAR', 'NVARCHAR', 'NCHAR', 
+            'CLOB', 'DATE', 'DATETIME', 'TIMESTAMP',
+            'BOOLEAN', 'DECIMAL', 'DOUBLE', 'FLOAT',
+            'INT', 'BIGINT', 'SMALLINT', 'TINYINT'
+        }
+        
+        # Extract base type (before any parentheses)
+        base_type_match = re.match(r'^([A-Z]+)', normalized_type)
+        if not base_type_match:
+            raise ValueError(f"Invalid column type format: '{col_type}'")
+        
+        base_type = base_type_match.group(1)
+        if base_type not in allowed_types:
+            raise ValueError(f"Unsupported column type: '{col_type}'. Must be one of: {', '.join(sorted(allowed_types))}")
+        
+        # Validate full type specification format (allowing precision/length specifiers)
+        if not re.match(r'^[A-Z]+(\([0-9,\s]+\))?$', normalized_type):
+            raise ValueError(f"Invalid column type format: '{col_type}'. Use format like 'VARCHAR(50)' or 'DECIMAL(10,2)'")
+        
+        return normalized_type
+
+    def _build_column_definition(self, col_name: str, col_type: str) -> str:
+        """
+        Build a column definition string with proper validation and escaping.
+        Returns formatted column definition for CREATE TABLE statement.
+        """
+        validated_col_name = self._validate_identifier(col_name, "column name")
+        validated_col_type = self._validate_column_type(col_type)
+        
+        # Use SQLite standard double-quote escaping for identifiers
+        escaped_col_name = f'"{validated_col_name}"'
+        
+        return f"{escaped_col_name} {validated_col_type}"
+
     def create_table(self, table_name: str, columns: list[tuple[str, str]], temp_table: bool = True, raise_if_exists: bool = True):
-        # Validate table_name argument
+        """
+        Create a new table using SQLAlchemy with proper validation and escaping.
+        
+        Args:
+            table_name: Name of the table to create
+            columns: List of (column_name, column_type) tuples
+            temp_table: Whether to create a temporary table
+            raise_if_exists: Whether to raise an error if table already exists
+        """
+        # Validate arguments
         if not isinstance(table_name, str):
             raise_auto_arg_type_error("table_name")
         if len(table_name) == 0:
-            raise ValueError("'table_name' argument of create_table cannot be an empty string!")
-        # Validate temp_table argument
+            raise ValueError("'table_name' argument cannot be an empty string")
         if not isinstance(temp_table, bool):
             raise_auto_arg_type_error("temp_table")
         if not isinstance(raise_if_exists, bool):
             raise_auto_arg_type_error("raise_if_exists")
-        # Validate columns argument
-        if (not isinstance(columns, list)) or (not all(
+        if not isinstance(columns, list) or not all(
             isinstance(col, tuple) and len(col) == 2
-            and isinstance(col[0], str)
-            and isinstance(col[1], str)
-        for col in columns)):
+            and isinstance(col[0], str) and isinstance(col[1], str)
+            for col in columns
+        ):
             raise_auto_arg_type_error("columns")
         
-        # Validate table name using basic validation
+        # Validate and normalize table name
         validated_table_name = self._validate_identifier(table_name, "table name")
+        escaped_table_name = f'"{validated_table_name}"'
         
         # Check if table already exists using SQLAlchemy parameterized query
         if raise_if_exists:
-            result = self.connection.execute(
-                text("SELECT name FROM sqlite_master WHERE type='table' AND name=:table_name"), 
-                {"table_name": validated_table_name}
-            )
+            check_query = text("SELECT name FROM sqlite_master WHERE type='table' AND name=:table_name")
+            result = self.connection.execute(check_query, {"table_name": validated_table_name})
             if result.fetchone() is not None:
-                raise ValueError(f"Table '{validated_table_name}' already exists.")
+                raise ValueError(f"Table '{validated_table_name}' already exists")
         
-        # Validate columns and build column definitions
+        # Build column definitions using helper method
         column_definitions = []
         for col_name, col_type in columns:
-            # Validate column name
-            validated_col_name = self._validate_identifier(col_name, "column name")
-            
-            # Validate column type - allow only safe, known SQLite types
-            allowed_types = {
-                'TEXT', 'INTEGER', 'REAL', 'BLOB', 'NUMERIC',
-                'VARCHAR', 'CHAR', 'NVARCHAR', 'NCHAR',
-                'CLOB', 'DATE', 'DATETIME', 'TIMESTAMP',
-                'BOOLEAN', 'DECIMAL', 'DOUBLE', 'FLOAT',
-                'INT', 'BIGINT', 'SMALLINT', 'TINYINT'
-            }
-            
-            # Allow type specifications with length/precision (e.g., VARCHAR(50), DECIMAL(10,2))
-            base_type = re.match(r'^([A-Z]+)', col_type.upper())
-            if not base_type or base_type.group(1) not in allowed_types:
-                raise ValueError(f"Unsupported column type: '{col_type}'. Must be one of: {', '.join(sorted(allowed_types))}")
-            
-            # Basic validation for type specification format
-            if not re.match(r'^[A-Z]+(\([0-9,\s]+\))?$', col_type.upper()):
-                raise ValueError(f"Invalid column type format: '{col_type}'")
-            
-            # Use double quotes for identifier escaping (SQLite standard)
-            escaped_col_name = f'"{validated_col_name}"'
-            column_definitions.append(f"{escaped_col_name} {col_type.upper()}")
+            column_def = self._build_column_definition(col_name, col_type)
+            column_definitions.append(column_def)
         
-        columns_qstr = ",\n                ".join(column_definitions)
+        # Format column definitions for query
+        columns_clause = ",\n                ".join(column_definitions)
         
-        # Build CREATE TABLE statement with proper identifier escaping
+        # Build CREATE TABLE statement
         temp_keyword = " TEMPORARY" if temp_table else ""
-        escaped_table_name = f'"{validated_table_name}"'
-        
-        query = f"""CREATE{temp_keyword} TABLE IF NOT EXISTS {escaped_table_name} (
+        create_query = f"""CREATE{temp_keyword} TABLE IF NOT EXISTS {escaped_table_name} (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                {columns_qstr}
+                {columns_clause}
             )"""
         
-        # Execute using SQLAlchemy's text() construct
-        self.connection.execute(text(query))
+        # Execute using SQLAlchemy's text() construct for safe execution
+        self.connection.execute(text(create_query))
+
+    def _map_sqlite_type_to_sqlalchemy(self, sqlite_type: str):
+        """
+        Map SQLite type strings to SQLAlchemy column types.
+        Returns appropriate SQLAlchemy column type class.
+        """
+        # Normalize the type string
+        normalized_type = sqlite_type.upper().strip()
+        base_type_match = re.match(r'^([A-Z]+)', normalized_type)
+        if not base_type_match:
+            raise ValueError(f"Invalid SQLite type format: '{sqlite_type}'")
+        base_type = base_type_match.group(1)
+        
+        # SQLite to SQLAlchemy type mapping
+        type_mapping = {
+            'TEXT': Text,
+            'VARCHAR': String,
+            'CHAR': String,
+            'NVARCHAR': String,
+            'NCHAR': String,
+            'CLOB': Text,
+            'INTEGER': Integer,
+            'INT': Integer,
+            'BIGINT': Integer,
+            'SMALLINT': Integer,
+            'TINYINT': Integer,
+            'REAL': Float,
+            'DOUBLE': Float,
+            'FLOAT': Float,
+            'NUMERIC': Float,
+            'DECIMAL': Float,
+            'BOOLEAN': Boolean,
+            'DATE': DateTime,
+            'DATETIME': DateTime,
+            'TIMESTAMP': DateTime,
+            'BLOB': LargeBinary,
+        }
+        
+        if base_type not in type_mapping:
+            raise ValueError(f"Cannot map SQLite type '{sqlite_type}' to SQLAlchemy type")
+        
+        sqlalchemy_type = type_mapping[base_type]
+        
+        # Handle length specifications for string types
+        if base_type in ('VARCHAR', 'CHAR', 'NVARCHAR', 'NCHAR') and '(' in normalized_type:
+            length_match = re.search(r'\((\d+)\)', normalized_type)
+            if length_match:
+                length = int(length_match.group(1))
+                return sqlalchemy_type(length)
+        
+        return sqlalchemy_type()
+
+    def create_table_with_sqlalchemy_ddl(self, table_name: str, columns: list[tuple[str, str]], temp_table: bool = True, raise_if_exists: bool = True):
+        """
+        Create a table using SQLAlchemy's Table and MetaData objects for enhanced DDL capabilities.
+        This provides better type safety and integration with SQLAlchemy's ORM features.
+        
+        Args:
+            table_name: Name of the table to create
+            columns: List of (column_name, column_type) tuples
+            temp_table: Whether to create a temporary table
+            raise_if_exists: Whether to raise an error if table already exists
+        """
+        # Validate arguments (reuse validation from create_table)
+        if not isinstance(table_name, str) or len(table_name) == 0:
+            raise ValueError("table_name must be a non-empty string")
+        if not isinstance(temp_table, bool):
+            raise_auto_arg_type_error("temp_table")
+        if not isinstance(raise_if_exists, bool):
+            raise_auto_arg_type_error("raise_if_exists")
+        if not isinstance(columns, list) or not all(
+            isinstance(col, tuple) and len(col) == 2
+            and isinstance(col[0], str) and isinstance(col[1], str)
+            for col in columns
+        ):
+            raise_auto_arg_type_error("columns")
+        
+        # Validate table name
+        validated_table_name = self._validate_identifier(table_name, "table name")
+        
+        # Check if table exists
+        if raise_if_exists:
+            check_query = text("SELECT name FROM sqlite_master WHERE type='table' AND name=:table_name")
+            result = self.connection.execute(check_query, {"table_name": validated_table_name})
+            if result.fetchone() is not None:
+                raise ValueError(f"Table '{validated_table_name}' already exists")
+        
+        # Create MetaData object
+        metadata = MetaData()
+        
+        # Build SQLAlchemy Column objects
+        sqlalchemy_columns = [
+            Column('id', Integer, primary_key=True, autoincrement=True)
+        ]
+        
+        for col_name, col_type in columns:
+            validated_col_name = self._validate_identifier(col_name, "column name")
+            validated_col_type = self._validate_column_type(col_type)
+            
+            # Map to SQLAlchemy type
+            sqlalchemy_type = self._map_sqlite_type_to_sqlalchemy(validated_col_type)
+            sqlalchemy_columns.append(Column(validated_col_name, sqlalchemy_type))
+        
+        # Create Table object
+        if temp_table:
+            # For temporary tables, fall back to raw SQL since SQLAlchemy doesn't have direct support
+            temp_keyword = " TEMPORARY"
+            column_defs = []
+            for col in sqlalchemy_columns:
+                if col.name == 'id':
+                    column_defs.append(f'"{col.name}" {col.type.compile(self._db.engine.dialect)} PRIMARY KEY AUTOINCREMENT')
+                else:
+                    column_defs.append(f'"{col.name}" {col.type.compile(self._db.engine.dialect)}')
+            
+            columns_clause = ",\n                ".join(column_defs)
+            escaped_table_name = f'"{validated_table_name}"'
+            create_query = f"""CREATE{temp_keyword} TABLE IF NOT EXISTS {escaped_table_name} (
+                {columns_clause}
+            )"""
+            self.connection.execute(text(create_query))
+        else:
+            # For regular tables, use SQLAlchemy's DDL capabilities
+            table = Table(
+                validated_table_name,
+                metadata,
+                *sqlalchemy_columns
+            )
+            
+            # Create the table using SQLAlchemy DDL
+            metadata.create_all(self._db.engine, tables=[table], checkfirst=not raise_if_exists)
 
     def drop_table(self, table_name: str, raise_if_not_exists: bool = False):
         # Validate table_name argument
