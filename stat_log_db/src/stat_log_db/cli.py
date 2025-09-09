@@ -2,7 +2,7 @@ import os
 # import sys
 
 # from .parser import create_parser
-from .db import MemDB # , FileDB, Database, BaseConnection
+from .db import Database # , MemDB, FileDB, BaseConnection
 
 
 def main():
@@ -18,7 +18,7 @@ def main():
 
     # print(f"{args=}")
 
-    sl_db = MemDB({
+    sl_db = Database({
         "is_mem": True,
         "fkey_constraint": True
     })

@@ -6,7 +6,7 @@ import pytest
 import sys
 from pathlib import Path
 
-from stat_log_db.db import MemDB
+from stat_log_db.db import Database
 
 
 # Add the src directory to the path to import the module
@@ -17,7 +17,7 @@ sys.path.insert(0, str(ROOT / "stat_log_db" / "src"))
 @pytest.fixture
 def mem_db():
     """Create a test in-memory database and clean up after tests."""
-    sl_db = MemDB({
+    sl_db = Database({
         "is_mem": True,
         "fkey_constraint": True
     })
