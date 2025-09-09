@@ -193,6 +193,19 @@ def test_test_style():
     assert "Running style tests" in out
     assert "flake8" in out
 
+# def test_doc_generate_html():
+#     """Test -d h (generate HTML documentation)."""
+#     code, out = run_tools(['-d', 'h'])
+#     assert code == 0
+#     assert 'Generating HTML documentation' in out
+
+
+def test_doc_invalid_arg():
+    """Test -d with invalid argument."""
+    code, out = run_tools(['-d', 'x'])
+    assert code == 1
+    assert ("Unsupported argument" in out) or ("Invalid doc mode" in out)
+
 
 @pytest.mark.skipif(GITHUB_ACTIONS, reason="Skipping test on GitHub Actions")
 def test_clean():
