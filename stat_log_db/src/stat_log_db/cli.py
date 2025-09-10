@@ -1,8 +1,12 @@
 import os
 # import sys
 
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
 # from .parser import create_parser
-from .db import MemDB # , FileDB, Database, BaseConnection
+from stat_log_db.db import Database as DB
+from stat_log_db.modules.log import Log, LogType, LogLevel
 
 
 def main():
@@ -18,21 +22,31 @@ def main():
 
     # print(f"{args=}")
 
-    sl_db = MemDB({
-        "is_mem": True,
-        "fkey_constraint": True
+    sl_db = DB({
+        "is_mem": True
     })
-    con = sl_db.init_db(True)
-    con.create_table("test", [('notes', 'TEXT')], False, True)
-    con.execute("INSERT INTO test (notes) VALUES (?);", ("Hello world!",))
-    con.commit()
-    con.execute("SELECT * FROM test;")
-    sql_logs = con.fetchall()
-    print(sql_logs)
-    con.drop_table("test", True)
-    sl_db.close_db()
-    if sl_db.is_file:
-        os.remove(sl_db.file_name)
+    sl_db.init_db()
+    with Session(sl_db.engine) as session:
+        info_type = LogType(
+            name="INFO"
+        )
+        session.add(info_type)
+        session.commit()
+        info_level = LogLevel(
+            name="INFO"
+        )
+        session.add(info_level)
+        session.commit()
+        hello_world = Log(
+            type_id=1,
+            level_id=1,
+            message="Hello, World!"
+        )
+        session.add(hello_world)
+        session.commit()
+        logs = select(Log).where(Log.id == 1)
+        for log in session.scalars(logs):
+            print(f"{log.id=}, {log.type_id=}, {log.level_id=}, {log.message=}")
 
 
 if __name__ == "__main__":

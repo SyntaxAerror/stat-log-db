@@ -110,20 +110,17 @@ if [ -n "$doc" ]; then
 fi
 
 # Clean artifacts [-c]
-if [ $clean -eq 1 ]; then
+if [ "$clean" -eq 1 ]; then
     echo "Cleaning up workspace..."
-    dirs_to_clean=(
+    static_dirs=(
         ".pytest_cache"
-        "tests/__pycache__"
         "stat_log_db/build"
         "stat_log_db/dist"
-        "stat_log_db/.pytest_cache"
-        "stat_log_db/tests/__pycache__"
         "stat_log_db/src/stat_log_db.egg-info"
-        "stat_log_db/src/stat_log_db/__pycache__"
-        "stat_log_db/src/stat_log_db/commands/__pycache__"
     )
-    rm -rf "${dirs_to_clean[@]}"
+    rm -rf "${static_dirs[@]}"
+    # Recursively find and remove all __pycache__ directories
+    find . -type d -name '__pycache__' -exec rm -rf {} +
     echo "Cleanup complete."
 fi
 
