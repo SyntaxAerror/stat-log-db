@@ -3,6 +3,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from stat_log_db.modules.base import BaseModel
 
+
 class LogType(BaseModel):
     __tablename__ = "log_type"
 
