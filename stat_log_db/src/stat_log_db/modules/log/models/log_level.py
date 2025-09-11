@@ -8,3 +8,5 @@ class LogLevel(BaseModel):
     __tablename__ = "log_level"
 
     name: Mapped[str] = mapped_column(String, nullable=False)
+
+    description: Mapped[str] = mapped_column(String, nullable=True)

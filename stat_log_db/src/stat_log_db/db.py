@@ -1,11 +1,15 @@
+import os
 import uuid
+import importlib
 from typing import Any
 
 # import sqlite3
 from sqlalchemy import create_engine as sqla_create_engine
 from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session
 
 # from .exceptions import raise_auto_arg_type_error
+from stat_log_db.data import get_data_from_file
 
 from stat_log_db.modules.base import BaseModel
 
@@ -77,6 +81,8 @@ class Database():
 
     # endregion
 
+    # region Initialization & Closure
+
     def init_db(self):
         """
             Initialize the database.
@@ -97,3 +103,30 @@ class Database():
     #     """
     #     connection = self.engine.connect()
     #     return connection
+
+    # endregion
+
+    # region Data Loading
+
+    def load_data(self, module: str, file: str):
+        """
+            Load data from a file into the database.
+        """
+        project_root = os.path.dirname(os.path.abspath(__file__))
+        module_file_path = f"{project_root}/modules/{module}/data/{file}"
+        datas = get_data_from_file(module_file_path)
+        with Session(self.engine) as session:
+            for data in datas:
+                metadata = data['metadata']
+                external_id = metadata.get('external_id', None)
+                model = metadata['model']
+                module_path = f"stat_log_db.modules.{module}"
+                model_module = importlib.import_module(module_path)
+                model_class = getattr(model_module, model)
+                vals = data['vals']
+                vals['external_id'] = external_id
+                instance = model_class(**vals)
+                session.add(instance)
+            session.commit()
+
+    # endregion

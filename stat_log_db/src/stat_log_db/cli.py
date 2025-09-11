@@ -26,27 +26,22 @@ def main():
         "is_mem": True
     })
     sl_db.init_db()
+    sl_db.load_data("log", "log_levels.xml")
     with Session(sl_db.engine) as session:
-        info_type = LogType(
-            name="INFO"
-        )
-        session.add(info_type)
-        session.commit()
-        info_level = LogLevel(
-            name="INFO"
-        )
-        session.add(info_level)
-        session.commit()
+        info_level_query = select(LogLevel).where(LogLevel.external_id == 'log_level_info')
+        info_level = session.scalar(info_level_query)
+        if info_level is None:
+            raise ValueError("LogLevel with external_id 'log_level_info' not found.")
         hello_world = Log(
-            type_id=1,
-            level_id=1,
+            level_id=info_level.id,
+            name="Hello World",
             message="Hello, World!"
         )
         session.add(hello_world)
         session.commit()
-        logs = select(Log).where(Log.id == 1)
+        logs = select(Log)
         for log in session.scalars(logs):
-            print(f"{log.id=}, {log.type_id=}, {log.level_id=}, {log.message=}")
+            print(f"{log.external_id=},\n{log.id=}, {log.name=},\n{log.type_id=}, {log.level_id=},\n{log.message=}")
 
 
 if __name__ == "__main__":

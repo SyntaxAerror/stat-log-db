@@ -1,0 +1,23 @@
+<data>
+
+    <record id="log_level_debug" model="LogLevel">
+        <name>Debug</name>
+        <description>Detailed information, typically of interest only when diagnosing problems.</description>
+    </record>
+
+    <record id="log_level_info" model="LogLevel">
+        <name>Info</name>
+        <description>Informational messages that represent the normal functioning of the application.</description>
+    </record>
+
+    <record id="log_level_warning" model="LogLevel">
+        <name>Warning</name>
+        <description>Indicates a potential problem that doesn't stop the application from functioning.</description>
+    </record>
+
+    <record id="log_level_error" model="LogLevel">
+        <name>Error</name>
+        <description>Indicates a significant problem that has occurred.</description>
+    </record>
+
+</data>

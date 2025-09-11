@@ -8,10 +8,12 @@ from stat_log_db.modules.log import LogType, LogLevel
 class Log(BaseModel):
     __tablename__ = "log"
 
-    type_id: Mapped[int] = mapped_column(ForeignKey("log_type.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+
+    message: Mapped[str] = mapped_column(String, nullable=True)
+
+    type_id: Mapped[int] = mapped_column(ForeignKey("log_type.id"), nullable=True)
     type: Mapped[LogType] = relationship()
 
     level_id: Mapped[int] = mapped_column(ForeignKey("log_level.id"), nullable=False)
     level: Mapped[LogLevel] = relationship()
-
-    message: Mapped[str] = mapped_column(String, nullable=False)
